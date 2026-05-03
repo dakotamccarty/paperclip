@@ -1,0 +1,25 @@
+app = "gxu-paperclip"
+primary_region = "nrt"
+
+[experimental]
+  auto_rollback = true
+
+[env]
+  PAPERCLIP_DEPLOYMENT_EXPOSURE = "public"
+  PAPERCLIP_PUBLIC_URL = "https://agents.gxulab.com"
+
+[mounts]
+  source = "paperclip_data"
+  destination = "/paperclip"
+
+[http_service]
+  internal_port = 3100
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
