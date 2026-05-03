@@ -21,6 +21,19 @@ type SkillTelemetryInput = {
   metadata: Record<string, unknown> | null;
 };
 
+// In-memory TTL cache for the skills list endpoint. The list endpoint is
+// called on most dashboard page loads and scales linearly with skill count;
+// at 100+ skills it becomes a multi-second blocker. Skills change rarely,
+// so a short cache keyed by companyId with explicit invalidation on every
+// mutation is a safe, large performance win.
+type SkillsListCacheEntry = { data: unknown; expiresAt: number };
+const skillsListCache = new Map<string, SkillsListCacheEntry>();
+const SKILLS_LIST_CACHE_TTL_MS = 60_000;
+
+function invalidateSkillsListCache(companyId: string) {
+  skillsListCache.delete(companyId);
+}
+
 export function companySkillRoutes(db: Db) {
   const router = Router();
   const agents = agentService(db);
@@ -84,7 +97,20 @@ export function companySkillRoutes(db: Db) {
   router.get("/companies/:companyId/skills", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
+
+    const cached = skillsListCache.get(companyId);
+    if (cached && cached.expiresAt > Date.now()) {
+      res.setHeader("X-Skills-Cache", "hit");
+      res.json(cached.data);
+      return;
+    }
+
     const result = await svc.list(companyId);
+    skillsListCache.set(companyId, {
+      data: result,
+      expiresAt: Date.now() + SKILLS_LIST_CACHE_TTL_MS,
+    });
+    res.setHeader("X-Skills-Cache", "miss");
     res.json(result);
   });
 
@@ -149,6 +175,7 @@ export function companySkillRoutes(db: Db) {
         },
       });
 
+      invalidateSkillsListCache(companyId);
       res.status(201).json(result);
     },
   );
@@ -183,6 +210,7 @@ export function companySkillRoutes(db: Db) {
         },
       });
 
+      invalidateSkillsListCache(companyId);
       res.json(result);
     },
   );
@@ -223,6 +251,7 @@ export function companySkillRoutes(db: Db) {
         }
       }
 
+      invalidateSkillsListCache(companyId);
       res.status(201).json(result);
     },
   );
@@ -256,6 +285,7 @@ export function companySkillRoutes(db: Db) {
         },
       });
 
+      invalidateSkillsListCache(companyId);
       res.json(result);
     },
   );
@@ -286,6 +316,7 @@ export function companySkillRoutes(db: Db) {
       },
     });
 
+    invalidateSkillsListCache(companyId);
     res.json(result);
   });
 
@@ -315,6 +346,7 @@ export function companySkillRoutes(db: Db) {
       },
     });
 
+    invalidateSkillsListCache(companyId);
     res.json(result);
   });
 
